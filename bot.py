@@ -7,7 +7,6 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.types import Message
-
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
@@ -15,10 +14,8 @@ from config import settings
 from keyboards import main_kb
 from texts import (
     START_TEXT,
-    BUY_ASK_AMOUNT_TEXT,
     BUY_ASK_CONTACT_TEXT,
     BUY_FINISH_TEXT,
-    SELL_ASK_AMOUNT_TEXT,
     SELL_ASK_CONTACT_TEXT,
     SELL_FINISH_TEXT,
 )
@@ -39,6 +36,8 @@ MAIN_MENU_BUTTONS = {
     "💵 Продать USDT",
     "📊 Курс покупки / продажи",
 }
+
+
 def generate_order_id() -> str:
     """Простой номер заявки по текущему времени."""
     return datetime.now().strftime("%Y%m%d%H%M%S")
@@ -91,19 +90,20 @@ async def buy_start(message: Message, state: FSMContext):
 
     buy_rate = rates["buy_to_client"]  # курс, по которому клиент ПОКУПАЕТ USDT у нас
 
-    # Используем текст из texts.py
-    text = BUY_ASK_AMOUNT_TEXT.replace("Курс:", f"Курс: {buy_rate:.2f} ₽")
-
-    await message.answer(text, reply_markup=None)
+    await message.answer(
+        f"💸 <b>Покупка USDT (Москва)</b>\n\n"
+        f"Курс: {buy_rate:.2f} ₽\n\n"
+        "Укажите, пожалуйста, сумму обмена в рублях:\n"
+        "Примеры: <code>100000</code>, <code>5000000</code>, <code>150 USDT</code>"
+    )
     await state.set_state(DealStates.buy_amount)
-
 
 
 @dp.message(DealStates.buy_amount)
 async def buy_amount(message: Message, state: FSMContext):
     text = message.text.strip()
 
-    # нажали одну из кнопок меню вместо суммы
+    # нажали кнопку меню
     if text in MAIN_MENU_BUTTONS:
         await state.clear()
         if text == "💸 Купить USDT":
@@ -113,7 +113,6 @@ async def buy_amount(message: Message, state: FSMContext):
         if text == "📊 Курс покупки / продажи":
             return await show_course(message, state)
 
-    # --- парсим сумму ---
     clean = text.replace(" ", "")
     from rapira_api import fetch_usdt_rub_rate
     rates = await fetch_usdt_rub_rate()
@@ -123,33 +122,33 @@ async def buy_amount(message: Message, state: FSMContext):
 
     buy_rate = rates["buy_to_client"]  # RUB за 1 USDT
 
-        try:
+    try:
+        # вариант, когда ввели USDT
         if clean.upper().endswith("USDT"):
-            # сумма введена в USDT
-            num = re.sub(r'(?i)USDT$', "", clean)
+            num = re.sub(r"(?i)USDT$", "", clean)
             usdt_amount = float(num.replace(",", "."))
             rub_amount = usdt_amount * buy_rate
         else:
-            # считаем, что сумма в рублях; допускаем: ₽, р, руб, руб., рублей
+            # считаем, что ввели рубли
             m = re.match(
-                r'^([\d.,]+)(?:₽|р\.?|руб\.?|рублей)?$',
+                r"^([\d.,]+)(?:₽|р\.?|руб\.?|рублей)?$",
                 clean,
                 flags=re.IGNORECASE,
             )
             if not m:
                 raise ValueError("bad format")
 
-            rub_amount = float(m.group(1).replace(" ", "").replace(",", "."))
+            rub_amount = float(m.group(1).replace(",", "."))
             usdt_amount = rub_amount / buy_rate
 
-        # --- формируем окно заявки ---
+        # --- окно заявки ---
         order_id = generate_order_id()
-        received_usdt_rounded = int(round(usdt_amount))
+        usdt_rounded = int(round(usdt_amount))
 
         text_window = (
             f"🧾 <b>Заявка #{order_id}</b>\n\n"
             f"Вы отдаёте: {rub_amount:.2f} ₽\n"
-            f"Вы получаете: {received_usdt_rounded} USDT\n"
+            f"Вы получаете: {usdt_rounded} USDT\n"
             f"Курс обмена: {buy_rate:.2f} ₽ за 1 USDT\n\n"
             "ℹ️ Точная сумма будет рассчитана по фактическому курсу "
             "на момент пересчёта денег."
@@ -157,30 +156,15 @@ async def buy_amount(message: Message, state: FSMContext):
 
         await message.answer(text_window)
 
-    except ValueError:
+    except Exception:
         await message.answer(
-            "❗ Пожалуйста, введите корректную сумму, например "
-            "'100000', '100000 руб' или '150 USDT'."
+            "❗ Пожалуйста, введите корректную сумму.\n"
+            "Например: 100000, 100000 руб, 150 USDT"
         )
         return
 
-            if not m:
-                raise ValueError("bad format")
-
-            rub_amount = float(m.group(1).replace(" ", "").replace(",", "."))
-            usdt_amount = rub_amount / buy_rate
-            await message.answer(
-                f"💡 Это примерно {usdt_amount:.6f} USDT за {rub_amount:.2f} ₽."
-            )
-    except ValueError:
-        await message.answer(
-            "❗ Пожалуйста, введите корректную сумму, например "
-            "'100000', '100000 руб' или '150 USDT'."
-        )
-        return
-
-    # сохраняем исходный ввод (строкой)
-    await state.update_data(amount=text)
+    # сохраняем исходные данные
+    await state.update_data(amount=text, order_id=order_id)
     await state.set_state(DealStates.buy_contact)
     await message.answer(BUY_ASK_CONTACT_TEXT)
 
@@ -190,12 +174,14 @@ async def buy_contact(message: Message, state: FSMContext):
     """Финальный шаг покупки: получили ФИО, шлём заявку админу."""
     data = await state.get_data()
     amount = data.get("amount", "—")
+    order_id = data.get("order_id", "—")
     fio = message.text.strip()
 
     user = message.from_user
     username = f"@{user.username}" if user.username else user.full_name
 
     admin_text = (
+        f"🧾 Заявка #{order_id}\n"
         "🆕 Новая заявка на ПОКУПКУ USDT\n\n"
         f"👤 Пользователь: {username} (id: {user.id})\n"
         "📍 Город: Москва\n"
@@ -221,12 +207,14 @@ async def sell_start(message: Message, state: FSMContext):
         await message.answer("⚠️ Не удалось получить курс. Попробуйте чуть позже.")
         return
 
-    sell_rate = rates["sell_from_client"]  # RUB за 1 USDT (когда клиент ПРОДАЁТ нам)
+    sell_rate = rates["sell_from_client"]  # RUB за 1 USDT
 
     await message.answer(
-    SELL_ASK_AMOUNT_TEXT.replace("Курс:", f"Курс: {sell_rate:.2f} ₽")
-)
-
+        f"💵 <b>Продажа USDT (Москва)</b>\n\n"
+        f"Курс: {sell_rate:.2f} ₽\n\n"
+        "Укажите, пожалуйста, сумму обмена (в рублях или USDT):\n"
+        "Примеры: <code>50000</code>, <code>50000 руб</code>, <code>200 USDT</code>"
+    )
     await state.set_state(DealStates.sell_amount)
 
 
@@ -253,31 +241,30 @@ async def sell_amount(message: Message, state: FSMContext):
 
     sell_rate = rates["sell_from_client"]  # RUB за 1 USDT
 
-       try:
+    try:
         if clean.upper().endswith("USDT"):
-            num = re.sub(r'(?i)USDT$', "", clean)
+            num = re.sub(r"(?i)USDT$", "", clean)
             usdt_amount = float(num.replace(",", "."))
             rub_amount = usdt_amount * sell_rate
         else:
             m = re.match(
-                r'^([\d.,]+)(?:₽|р\.?|руб\.?|рублей)?$',
+                r"^([\d.,]+)(?:₽|р\.?|руб\.?|рублей)?$",
                 clean,
                 flags=re.IGNORECASE,
             )
             if not m:
                 raise ValueError("bad format")
 
-            rub_amount = float(m.group(1).replace(" ", "").replace(",", "."))
+            rub_amount = float(m.group(1).replace(",", "."))
             usdt_amount = rub_amount / sell_rate
 
-        # --- формируем окно заявки ---
         order_id = generate_order_id()
-        received_rub_rounded = int(round(rub_amount))
+        rub_rounded = int(round(rub_amount))
 
         text_window = (
             f"🧾 <b>Заявка #{order_id}</b>\n\n"
             f"Вы отдаёте: {usdt_amount:.2f} USDT\n"
-            f"Вы получаете: {received_rub_rounded} ₽\n"
+            f"Вы получаете: {rub_rounded} ₽\n"
             f"Курс обмена: {sell_rate:.2f} ₽ за 1 USDT\n\n"
             "ℹ️ Точная сумма будет рассчитана по фактическому курсу "
             "на момент пересчёта денег."
@@ -285,21 +272,14 @@ async def sell_amount(message: Message, state: FSMContext):
 
         await message.answer(text_window)
 
-    except ValueError:
+    except Exception:
         await message.answer(
-            "❗ Пожалуйста, введите корректную сумму, например "
-            "'50000', '50000 руб' или '200 USDT'."
+            "❗ Пожалуйста, введите корректную сумму.\n"
+            "Например: 50000, 50000 руб, 200 USDT"
         )
         return
 
-    except ValueError:
-        await message.answer(
-            "❗ Пожалуйста, введите корректную сумму, например "
-            "'50000', '50000 руб' или '200 USDT'."
-        )
-        return
-
-    await state.update_data(amount=text)
+    await state.update_data(amount=text, order_id=order_id)
     await state.set_state(DealStates.sell_contact)
     await message.answer(SELL_ASK_CONTACT_TEXT)
 
@@ -309,12 +289,14 @@ async def sell_contact(message: Message, state: FSMContext):
     """Финальный шаг продажи: получили ФИО, шлём заявку админу."""
     data = await state.get_data()
     amount = data.get("amount", "—")
+    order_id = data.get("order_id", "—")
     fio = message.text.strip()
 
     user = message.from_user
     username = f"@{user.username}" if user.username else user.full_name
 
     admin_text = (
+        f"🧾 Заявка #{order_id}\n"
         "🆕 Новая заявка на ПРОДАЖУ USDT\n\n"
         f"👤 Пользователь: {username} (id: {user.id})\n"
         "📍 Город: Москва\n"
@@ -340,13 +322,13 @@ async def show_course(message: Message, state: FSMContext):
         buy = rates["buy_to_client"]
         sell = rates["sell_from_client"]
         text = (
-            f"📊 <b>Курс USDT/RUB (Москва)</b>\n\n"
+            "📊 <b>Курс USDT/RUB (Москва)</b>\n\n"
             f"🟢 Покупка USDT (когда вы покупаете у нас): {buy:.2f} ₽\n"
             f"🔵 Продажа USDT (когда вы продаёте нам): {sell:.2f} ₽"
         )
         await message.answer(text)
 
-    await message.answer(reply_markup=main_kb)
+    await message.answer("Выберите дальнейшее действие:", reply_markup=main_kb)
 
 
 # ---------- ЗАПУСК ----------
