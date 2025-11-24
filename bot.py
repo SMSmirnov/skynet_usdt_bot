@@ -86,11 +86,12 @@ async def buy_start(message: Message, state: FSMContext):
 
     buy_rate = rates["buy_to_client"]  # курс, по которому клиент ПОКУПАЕТ USDT у нас
 
-  await message.answer(
-    BUY_ASK_AMOUNT_TEXT.replace("Курс:", f"Курс: {buy_rate:.2f} ₽")
-)
+    # Используем текст из texts.py
+    text = BUY_ASK_AMOUNT_TEXT.replace("Курс:", f"Курс: {buy_rate:.2f} ₽")
 
+    await message.answer(text, reply_markup=None)
     await state.set_state(DealStates.buy_amount)
+
 
 
 @dp.message(DealStates.buy_amount)
