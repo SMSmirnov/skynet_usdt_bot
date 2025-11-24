@@ -40,7 +40,7 @@ MAIN_MENU_BUTTONS = {
 
 def generate_order_id() -> str:
     """Простой номер заявки по текущему времени."""
-    return datetime.now().strftime("%Y%m%d%H%M%S")
+    return datetime.now().strftime("%y%m%d%H%M%S")
 
 
 # ---------- ИНИЦИАЛИЗАЦИЯ БОТА ----------
@@ -94,7 +94,6 @@ async def buy_start(message: Message, state: FSMContext):
         f"💸 <b>Покупка USDT (Москва)</b>\n\n"
         f"Курс: {buy_rate:.2f} ₽\n\n"
         "Укажите, пожалуйста, сумму обмена в рублях:\n"
-        "Примеры: <code>100000</code>, <code>5000000</code>, <code>150 USDT</code>"
     )
     await state.set_state(DealStates.buy_amount)
 
@@ -213,7 +212,6 @@ async def sell_start(message: Message, state: FSMContext):
         f"💵 <b>Продажа USDT (Москва)</b>\n\n"
         f"Курс: {sell_rate:.2f} ₽\n\n"
         "Укажите, пожалуйста, сумму обмена (в рублях или USDT):\n"
-        "Примеры: <code>50000</code>, <code>50000 руб</code>, <code>200 USDT</code>"
     )
     await state.set_state(DealStates.sell_amount)
 
