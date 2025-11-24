@@ -1,5 +1,6 @@
 import asyncio
 import re
+from datetime import datetime
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
@@ -38,6 +39,10 @@ MAIN_MENU_BUTTONS = {
     "💵 Продать USDT",
     "📊 Курс покупки / продажи",
 }
+def generate_order_id() -> str:
+    """Простой номер заявки по текущему времени."""
+    return datetime.now().strftime("%Y%m%d%H%M%S")
+
 
 # ---------- ИНИЦИАЛИЗАЦИЯ БОТА ----------
 
@@ -118,15 +123,12 @@ async def buy_amount(message: Message, state: FSMContext):
 
     buy_rate = rates["buy_to_client"]  # RUB за 1 USDT
 
-    try:
+        try:
         if clean.upper().endswith("USDT"):
             # сумма введена в USDT
             num = re.sub(r'(?i)USDT$', "", clean)
             usdt_amount = float(num.replace(",", "."))
             rub_amount = usdt_amount * buy_rate
-            await message.answer(
-                f"💡 Это примерно {rub_amount:.2f} ₽ за {usdt_amount:.6f} USDT."
-            )
         else:
             # считаем, что сумма в рублях; допускаем: ₽, р, руб, руб., рублей
             m = re.match(
@@ -134,6 +136,34 @@ async def buy_amount(message: Message, state: FSMContext):
                 clean,
                 flags=re.IGNORECASE,
             )
+            if not m:
+                raise ValueError("bad format")
+
+            rub_amount = float(m.group(1).replace(" ", "").replace(",", "."))
+            usdt_amount = rub_amount / buy_rate
+
+        # --- формируем окно заявки ---
+        order_id = generate_order_id()
+        received_usdt_rounded = int(round(usdt_amount))
+
+        text_window = (
+            f"🧾 <b>Заявка #{order_id}</b>\n\n"
+            f"Вы отдаёте: {rub_amount:.2f} ₽\n"
+            f"Вы получаете: {received_usdt_rounded} USDT\n"
+            f"Курс обмена: {buy_rate:.2f} ₽ за 1 USDT\n\n"
+            "ℹ️ Точная сумма будет рассчитана по фактическому курсу "
+            "на момент пересчёта денег."
+        )
+
+        await message.answer(text_window)
+
+    except ValueError:
+        await message.answer(
+            "❗ Пожалуйста, введите корректную сумму, например "
+            "'100000', '100000 руб' или '150 USDT'."
+        )
+        return
+
             if not m:
                 raise ValueError("bad format")
 
@@ -223,14 +253,11 @@ async def sell_amount(message: Message, state: FSMContext):
 
     sell_rate = rates["sell_from_client"]  # RUB за 1 USDT
 
-    try:
+       try:
         if clean.upper().endswith("USDT"):
             num = re.sub(r'(?i)USDT$', "", clean)
             usdt_amount = float(num.replace(",", "."))
             rub_amount = usdt_amount * sell_rate
-            await message.answer(
-                f"💡 Это примерно {rub_amount:.2f} ₽ за {usdt_amount:.6f} USDT."
-            )
         else:
             m = re.match(
                 r'^([\d.,]+)(?:₽|р\.?|руб\.?|рублей)?$',
@@ -242,9 +269,29 @@ async def sell_amount(message: Message, state: FSMContext):
 
             rub_amount = float(m.group(1).replace(" ", "").replace(",", "."))
             usdt_amount = rub_amount / sell_rate
-            await message.answer(
-                f"💡 Это примерно {usdt_amount:.6f} USDT за {rub_amount:.2f} ₽."
-            )
+
+        # --- формируем окно заявки ---
+        order_id = generate_order_id()
+        received_rub_rounded = int(round(rub_amount))
+
+        text_window = (
+            f"🧾 <b>Заявка #{order_id}</b>\n\n"
+            f"Вы отдаёте: {usdt_amount:.2f} USDT\n"
+            f"Вы получаете: {received_rub_rounded} ₽\n"
+            f"Курс обмена: {sell_rate:.2f} ₽ за 1 USDT\n\n"
+            "ℹ️ Точная сумма будет рассчитана по фактическому курсу "
+            "на момент пересчёта денег."
+        )
+
+        await message.answer(text_window)
+
+    except ValueError:
+        await message.answer(
+            "❗ Пожалуйста, введите корректную сумму, например "
+            "'50000', '50000 руб' или '200 USDT'."
+        )
+        return
+
     except ValueError:
         await message.answer(
             "❗ Пожалуйста, введите корректную сумму, например "
