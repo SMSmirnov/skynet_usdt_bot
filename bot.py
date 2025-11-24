@@ -171,10 +171,24 @@ async def buy_amount(message: Message, state: FSMContext):
 @dp.message(DealStates.buy_contact)
 async def buy_contact(message: Message, state: FSMContext):
     """Финальный шаг покупки: получили ФИО, шлём заявку админу."""
+
+    text = message.text.strip()
+
+    # Если вместо ФИО нажали одну из кнопок меню — переключаем сценарий
+    if text in MAIN_MENU_BUTTONS:
+        await state.clear()
+        if text == "💸 Купить USDT":
+            return await buy_start(message, state)
+        if text == "💵 Продать USDT":
+            return await sell_start(message, state)
+        if text == "📊 Курс покупки / продажи":
+            return await show_course(message, state)
+
+    # Иначе считаем, что это ФИО
     data = await state.get_data()
     amount = data.get("amount", "—")
     order_id = data.get("order_id", "—")
-    fio = message.text.strip()
+    fio = text
 
     user = message.from_user
     username = f"@{user.username}" if user.username else user.full_name
@@ -191,6 +205,7 @@ async def buy_contact(message: Message, state: FSMContext):
 
     await message.answer(BUY_FINISH_TEXT, reply_markup=main_kb)
     await state.clear()
+
 
 
 # ---------- ПРОДАЖА USDT ----------
@@ -211,7 +226,7 @@ async def sell_start(message: Message, state: FSMContext):
     await message.answer(
         f"💵 <b>Продажа USDT (Москва)</b>\n\n"
         f"Курс: {sell_rate:.2f} ₽\n\n"
-        "Укажите, пожалуйста, сумму обмена (в рублях или USDT):\n"
+        "Укажите, пожалуйста, сумму обмена в USDT:\n"
     )
     await state.set_state(DealStates.sell_amount)
 
@@ -285,10 +300,24 @@ async def sell_amount(message: Message, state: FSMContext):
 @dp.message(DealStates.sell_contact)
 async def sell_contact(message: Message, state: FSMContext):
     """Финальный шаг продажи: получили ФИО, шлём заявку админу."""
+
+    text = message.text.strip()
+
+    # Если вместо ФИО нажали одну из кнопок меню — переключаем сценарий
+    if text in MAIN_MENU_BUTTONS:
+        await state.clear()
+        if text == "💸 Купить USDT":
+            return await buy_start(message, state)
+        if text == "💵 Продать USDT":
+            return await sell_start(message, state)
+        if text == "📊 Курс покупки / продажи":
+            return await show_course(message, state)
+
+    # Иначе считаем, что это ФИО
     data = await state.get_data()
     amount = data.get("amount", "—")
     order_id = data.get("order_id", "—")
-    fio = message.text.strip()
+    fio = text
 
     user = message.from_user
     username = f"@{user.username}" if user.username else user.full_name
@@ -305,6 +334,7 @@ async def sell_contact(message: Message, state: FSMContext):
 
     await message.answer(SELL_FINISH_TEXT, reply_markup=main_kb)
     await state.clear()
+
 
 
 # ---------- КУРС ----------
