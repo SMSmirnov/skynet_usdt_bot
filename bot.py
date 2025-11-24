@@ -158,14 +158,23 @@ async def buy_amount(message: Message, state: FSMContext):
     except Exception:
         await message.answer(
             "❗ Пожалуйста, введите корректную сумму.\n"
-            "Например: 100000, 100000 руб, 150 USDT"
+
         )
         return
 
-    # сохраняем исходные данные
-    await state.update_data(amount=text, order_id=order_id)
+    # сохраняем данные для заявки
+    await state.update_data(
+        amount_input=text,          # как ввёл пользователь
+        order_id=order_id,
+        rub_amount=rub_amount,
+        usdt_amount=usdt_rounded,   # округлённое значение
+        rate=buy_rate,
+        direction="buy",
+    )
+
     await state.set_state(DealStates.buy_contact)
     await message.answer(BUY_ASK_CONTACT_TEXT)
+
 
 
 @dp.message(DealStates.buy_contact)
@@ -174,7 +183,7 @@ async def buy_contact(message: Message, state: FSMContext):
 
     text = message.text.strip()
 
-    # Если вместо ФИО нажали одну из кнопок меню — переключаем сценарий
+    # Если вместо ФИО нажали кнопку меню — переключаем сценарий
     if text in MAIN_MENU_BUTTONS:
         await state.clear()
         if text == "💸 Купить USDT":
@@ -184,27 +193,35 @@ async def buy_contact(message: Message, state: FSMContext):
         if text == "📊 Курс покупки / продажи":
             return await show_course(message, state)
 
-    # Иначе считаем, что это ФИО
     data = await state.get_data()
-    amount = data.get("amount", "—")
     order_id = data.get("order_id", "—")
+    amount_input = data.get("amount_input", "—")
+    rub_amount = data.get("rub_amount")
+    usdt_amount = data.get("usdt_amount")
+    rate = data.get("rate")
+
     fio = text
 
     user = message.from_user
     username = f"@{user.username}" if user.username else user.full_name
 
+    # Формируем красивое окно для админа
     admin_text = (
         f"🧾 Заявка #{order_id}\n"
         "🆕 Новая заявка на ПОКУПКУ USDT\n\n"
         f"👤 Пользователь: {username} (id: {user.id})\n"
         "📍 Город: Москва\n"
-        f"💰 Сумма: {amount}\n"
+        f"🔢 Ввод пользователя: {amount_input}\n"
+        f"💳 Клиент ОТДАЁТ: {rub_amount:.2f} ₽\n"
+        f"💰 Клиент ПОЛУЧАЕТ: {usdt_amount} USDT\n"
+        f"📈 Курс: {rate:.2f} ₽ за 1 USDT\n\n"
         f"📄 ФИО для пропуска: {fio}"
     )
-    await notify_admin(admin_text)
 
+    await notify_admin(admin_text)
     await message.answer(BUY_FINISH_TEXT, reply_markup=main_kb)
     await state.clear()
+
 
 
 
@@ -288,13 +305,21 @@ async def sell_amount(message: Message, state: FSMContext):
     except Exception:
         await message.answer(
             "❗ Пожалуйста, введите корректную сумму.\n"
-            "Например: 50000, 50000 руб, 200 USDT"
         )
         return
 
-    await state.update_data(amount=text, order_id=order_id)
+    await state.update_data(
+        amount_input=text,
+        order_id=order_id,
+        rub_amount=rub_rounded,     # здесь рубли округлены
+        usdt_amount=usdt_amount,
+        rate=sell_rate,
+        direction="sell",
+    )
+
     await state.set_state(DealStates.sell_contact)
     await message.answer(SELL_ASK_CONTACT_TEXT)
+
 
 
 @dp.message(DealStates.sell_contact)
@@ -303,7 +328,7 @@ async def sell_contact(message: Message, state: FSMContext):
 
     text = message.text.strip()
 
-    # Если вместо ФИО нажали одну из кнопок меню — переключаем сценарий
+    # Если вместо ФИО нажали кнопку меню — переключаем сценарий
     if text in MAIN_MENU_BUTTONS:
         await state.clear()
         if text == "💸 Купить USDT":
@@ -313,10 +338,13 @@ async def sell_contact(message: Message, state: FSMContext):
         if text == "📊 Курс покупки / продажи":
             return await show_course(message, state)
 
-    # Иначе считаем, что это ФИО
     data = await state.get_data()
-    amount = data.get("amount", "—")
     order_id = data.get("order_id", "—")
+    amount_input = data.get("amount_input", "—")
+    rub_amount = data.get("rub_amount")
+    usdt_amount = data.get("usdt_amount")
+    rate = data.get("rate")
+
     fio = text
 
     user = message.from_user
@@ -327,13 +355,17 @@ async def sell_contact(message: Message, state: FSMContext):
         "🆕 Новая заявка на ПРОДАЖУ USDT\n\n"
         f"👤 Пользователь: {username} (id: {user.id})\n"
         "📍 Город: Москва\n"
-        f"💰 Сумма: {amount}\n"
+        f"🔢 Ввод пользователя: {amount_input}\n"
+        f"💳 Клиент ОТДАЁТ: {usdt_amount:.2f} USDT\n"
+        f"💰 Клиент ПОЛУЧАЕТ: {rub_amount} ₽\n"
+        f"📉 Курс: {rate:.2f} ₽ за 1 USDT\n\n"
         f"📄 ФИО для пропуска: {fio}"
     )
-    await notify_admin(admin_text)
 
+    await notify_admin(admin_text)
     await message.answer(SELL_FINISH_TEXT, reply_markup=main_kb)
     await state.clear()
+
 
 
 
